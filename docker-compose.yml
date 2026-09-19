@@ -1,0 +1,76 @@
+services:
+  postgres:
+    image: postgres:16.11-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: beshball
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD}
+      POSTGRES_DB: beshball
+    ports: ["127.0.0.1:5432:5432"]
+    volumes: ["postgres_data:/var/lib/postgresql/data"]
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U beshball"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+  redis:
+    image: redis:7.4-alpine
+    restart: unless-stopped
+    command: ["redis-server", "--appendonly", "yes"]
+    ports: ["127.0.0.1:6379:6379"]
+    volumes: ["redis_data:/data"]
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+  minio:
+    image: minio/minio:RELEASE.2025-09-07T16-13-09Z
+    restart: unless-stopped
+    command: server /data --console-address :9001
+    environment:
+      MINIO_ROOT_USER: ${S3_ACCESS_KEY:?Set S3_ACCESS_KEY}
+      MINIO_ROOT_PASSWORD: ${S3_SECRET_KEY:?Set S3_SECRET_KEY}
+    ports: ["127.0.0.1:9000:9000", "127.0.0.1:9001:9001"]
+    volumes: ["minio_data:/data"]
+  backend:
+    build: {context: ., dockerfile: packages/backend/Dockerfile}
+    restart: unless-stopped
+    env_file: .env
+    environment:
+      NODE_ENV: development
+      HOST: 0.0.0.0
+      DATABASE_URL: postgresql://beshball:${POSTGRES_PASSWORD}@postgres:5432/beshball
+      REDIS_URL: redis://redis:6379
+      S3_ENDPOINT: http://minio:9000
+    depends_on:
+      postgres: {condition: service_healthy}
+      redis: {condition: service_healthy}
+    ports: ["127.0.0.1:3000:3000"]
+  worker:
+    build: {context: ., dockerfile: packages/backend/Dockerfile}
+    restart: unless-stopped
+    command: ["node", "packages/backend/dist/worker.js"]
+    env_file: .env
+    environment:
+      DATABASE_URL: postgresql://beshball:${POSTGRES_PASSWORD}@postgres:5432/beshball
+      REDIS_URL: redis://redis:6379
+      S3_ENDPOINT: http://minio:9000
+    depends_on: [backend, minio]
+  bot:
+    profiles: [telegram]
+    build: {context: ., dockerfile: packages/bot/Dockerfile}
+    restart: unless-stopped
+    env_file: .env
+    environment:
+      BACKEND_URL: http://backend:3000
+    depends_on: [backend]
+  admin:
+    build: {context: ., dockerfile: packages/admin/Dockerfile}
+    restart: unless-stopped
+    ports: ["127.0.0.1:8080:80"]
+    depends_on: [backend]
+volumes:
+  postgres_data:
+  redis_data:
+  minio_data:

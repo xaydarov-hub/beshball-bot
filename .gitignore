@@ -1,0 +1,28 @@
+node_modules/
+dist/
+build/
+.env
+.env.local
+.env.*
+!.env.example
+.runtime/
+.local/
+artifacts/
+test-results/
+playwright-report/
+beshball.zip
+*.log
+.DS_Store
+coverage/
+.turbo/
+.vite/
+*.tsbuildinfo
+
+# Chek rasmlari va boshqa foydalanuvchi ma'lumotlari hech qachon repoga kirmasin
+/receipts-local/
+/minio-data/
+/postgres-data/
+
+# Backup fayllar
+*.dump
+*.sql.gz

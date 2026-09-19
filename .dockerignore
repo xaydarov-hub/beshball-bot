@@ -1,0 +1,16 @@
+node_modules
+**/node_modules
+.env
+.env.*
+**/.env
+**/.env.*
+!.env.example
+.git
+.runtime
+.local
+artifacts
+backups
+**/dist
+**/*.tsbuildinfo
+*.zip
+beshball

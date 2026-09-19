@@ -1,0 +1,449 @@
+// BeshBall - PostgreSQL schema
+// Barcha vaqt maydonlari UTC da saqlanadi (DateTime, Postgres "timestamptz").
+// Biznes vaqt zonasi (Asia/Tashkent) faqat taqdim etish qatlamida qo'llanadi.
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum UserRole {
+  SUPER_ADMIN
+  MANAGER
+  RECEIPT_REVIEWER
+  CASHIER
+}
+
+enum ReceiptStatus {
+  RECEIVED
+  READING
+  PENDING_REVIEW
+  APPROVED
+  REJECTED
+  REVERSED
+}
+
+enum ReservationStatus {
+  ACTIVE
+  REDEEMED
+  EXPIRED
+  CANCELLED
+}
+
+enum LedgerEntryType {
+  PURCHASE_BASE
+  PURCHASE_BONUS
+  REFERRAL_BONUS
+  REDEMPTION
+  REDEMPTION_REVERSAL
+  MANUAL_ADJUSTMENT
+  RECEIPT_REVERSAL
+  EXPIRY
+}
+
+enum PosAdapterStatusEnum {
+  NOT_CONFIGURED
+  CONFIGURED_MANUAL_ONLY
+  CONFIGURED_LIVE
+}
+
+model Branch {
+  id        String   @id @default(cuid())
+  name      String
+  address   String?
+  active    Boolean  @default(true)
+  createdAt DateTime @default(now()) @db.Timestamptz(3) 
+
+  staff        StaffBranchAccess[]
+  receipts     Receipt[]
+  giftBranches GiftBranch[]
+
+  @@map("branches")
+}
+
+model Customer {
+  id                    String    @id @default(cuid())
+  telegramUserId         BigInt    @unique
+  phoneE164              String?   @unique
+  phoneVerified          Boolean   @default(false)
+  fullName               String?
+  locale                 String    @default("uz")
+  birthDate              DateTime? @db.Timestamptz(3) // faqat kun/oy muhim, yil ixtiyoriy
+  dataConsentAt          DateTime? @db.Timestamptz(3) 
+  marketingConsentAt     DateTime? @db.Timestamptz(3) 
+  marketingUnsubscribed  Boolean   @default(false)
+  blocked                Boolean   @default(false)
+  telegramBlocked        Boolean   @default(false)
+  blockedReason          String?
+  riskHold               Boolean   @default(false)
+  deletionRequestedAt    DateTime? @db.Timestamptz(3) 
+  referredByCustomerId   String?
+  createdAt              DateTime  @default(now()) @db.Timestamptz(3) 
+  updatedAt              DateTime  @updatedAt @db.Timestamptz(3) 
+
+  referredBy   Customer?  @relation("Referrals", fields: [referredByCustomerId], references: [id])
+  referrals    Customer[] @relation("Referrals")
+
+  receipts      Receipt[]
+  ledgerEntries LedgerEntry[]
+  reservations  GiftReservation[]
+  feedback      Feedback[]
+  broadcastLogs BroadcastRecipientLog[]
+
+  @@index([phoneE164])
+  @@map("customers")
+}
+
+model StaffUser {
+  id                String   @id @default(cuid())
+  telegramUserId    BigInt   @unique
+  fullName          String
+  role              UserRole
+  active            Boolean  @default(true)
+  createdAt         DateTime @default(now()) @db.Timestamptz(3) 
+
+  branchAccess      StaffBranchAccess[]
+  reviewedReceipts  Receipt[]            @relation("ReceiptReviewer")
+  redemptions       GiftReservation[]    @relation("RedeemedByCashier")
+  auditLogs         AuditLog[]
+
+  @@map("staff_users")
+}
+
+model StaffBranchAccess {
+  id          String    @id @default(cuid())
+  staffUserId String
+  branchId    String
+  staffUser   StaffUser @relation(fields: [staffUserId], references: [id])
+  branch      Branch    @relation(fields: [branchId], references: [id])
+
+  @@unique([staffUserId, branchId])
+  @@map("staff_branch_access")
+}
+
+model Receipt {
+  id                    String        @id @default(cuid())
+  customerId            String
+  branchId              String?
+  imageStorageKey        String // yopiq S3-compatible ombordagi kalit
+  imageHash              String // dublikat tekshiruvi uchun (perceptual/sha256)
+  perceptualHash         String?
+  duplicateFlags        Json?
+  manualVerificationNote String?
+  isDiscountedSet       Boolean @default(false)
+  bonusEligible         Boolean @default(false)
+  status                ReceiptStatus @default(RECEIVED)
+
+  // OCR natijasi (qat'iy schema, ishonchsiz manba sifatida saqlanadi)
+  ocrEngine              String?
+  ocrConfidencePercent   Int?
+  ocrRawText             String?
+  ocrExternalReceiptId   String?
+  ocrPurchasedAt         DateTime? @db.Timestamptz(3) 
+  ocrAmountSom           Int?
+
+  // Xodim/admin tomonidan tasdiqlangan yakuniy qiymatlar
+  confirmedAmountSom     Int?
+  confirmedPurchasedAt   DateTime? @db.Timestamptz(3) 
+  externalSaleId         String? // ZimZim/POS bilan moslashtirilganda
+  tillId                String?
+
+  firstReceivedAt        DateTime      @default(now()) @db.Timestamptz(3) // 120-daqiqalik oyna shundan hisoblanadi
+  reviewedByStaffId      String?
+  reviewedAt             DateTime? @db.Timestamptz(3) 
+  rejectionReason        String?
+
+  appliedCampaignKind     String?
+  appliedCampaignPercent  Int?
+  offPeakMultiplierApplied Boolean @default(false)
+
+  createdAt              DateTime      @default(now()) @db.Timestamptz(3) 
+  updatedAt              DateTime      @updatedAt @db.Timestamptz(3) 
+
+  customer   Customer   @relation(fields: [customerId], references: [id])
+  branch     Branch?    @relation(fields: [branchId], references: [id])
+  reviewer   StaffUser? @relation("ReceiptReviewer", fields: [reviewedByStaffId], references: [id])
+  ledgerEntries LedgerEntry[]
+
+  // Bitta chek butun tizimda bir marta: tashqi savdo ID mavjud bo'lsa unique.
+  @@unique([branchId, tillId, externalSaleId])
+  @@unique([imageHash])
+  @@index([imageHash])
+  @@index([customerId, status])
+  @@map("receipts")
+}
+
+/// O'chirilmaydigan operatsiyalar jurnali. Balans HECH QACHON to'g'ridan-to'g'ri
+/// UPDATE qilinmaydi - faqat shu jadvalga yozuv qo'shish orqali o'zgaradi.
+/// Joriy balans shu yozuvlar yig'indisidan hisoblanadi (yoki materialized bo'lib
+/// keshlanadi, lekin manba - shu jurnal).
+model LedgerEntry {
+  id              String          @id @default(cuid())
+  customerId      String
+  type            LedgerEntryType
+  unitsDelta      Int // musbat yoki manfiy, ichki birlik (100000 = 1 ball)
+  relatedReceiptId String?
+  relatedReservationId String?
+  operationKey    String? @unique
+  reasonNote      String?
+  createdByStaffId String? // qo'lda tuzatishlar uchun
+  createdAt       DateTime        @default(now()) @db.Timestamptz(3) 
+
+  customer    Customer         @relation(fields: [customerId], references: [id])
+  receipt     Receipt?         @relation(fields: [relatedReceiptId], references: [id])
+  reservation GiftReservation? @relation(fields: [relatedReservationId], references: [id])
+
+  @@index([customerId, createdAt])
+  @@map("ledger_entries")
+}
+
+model Gift {
+  id                    String   @id @default(cuid())
+  nameUz                String
+  nameRu                String?
+  descriptionUz         String?
+  descriptionRu         String?
+  imageUrl              String?
+  priceBalls            Int
+  menuPriceSom          Int
+  realCostSom           Int? // kiritilmagan bo'lishi mumkin
+  active                Boolean  @default(true)
+  temporarilyUnavailable Boolean @default(false)
+  dailyLimit            Int?
+  createdAt             DateTime @default(now()) @db.Timestamptz(3) 
+  updatedAt             DateTime @updatedAt @db.Timestamptz(3) 
+
+  branches     GiftBranch[]
+  reservations GiftReservation[]
+
+  @@map("gifts")
+}
+
+model GiftBranch {
+  id       String @id @default(cuid())
+  giftId   String
+  branchId String
+  active Boolean @default(true)
+  gift     Gift   @relation(fields: [giftId], references: [id])
+  branch   Branch @relation(fields: [branchId], references: [id])
+
+  @@unique([giftId, branchId])
+  @@map("gift_branches")
+}
+
+model GiftReservation {
+  id                String            @id @default(cuid())
+  customerId        String
+  giftId            String
+  priceBallsAtReserve Int // rezerv vaqtidagi narx muzlatiladi
+  status            ReservationStatus @default(ACTIVE)
+  qrTokenHash       String            @unique
+  backupCode        String
+  backupCodeAttempts Int              @default(0)
+  expiresAt         DateTime @db.Timestamptz(3) // rezervdan 3 daqiqa keyin
+  redeemedAt        DateTime? @db.Timestamptz(3) 
+  redeemedByCashierId String?
+  branchId          String?
+  menuPriceSomAtReserve Int @default(0)
+  realCostSomAtReserve Int?
+  createdAt         DateTime          @default(now()) @db.Timestamptz(3) 
+
+  customer      Customer     @relation(fields: [customerId], references: [id])
+  gift          Gift         @relation(fields: [giftId], references: [id])
+  redeemedBy    StaffUser?   @relation("RedeemedByCashier", fields: [redeemedByCashierId], references: [id])
+  ledgerEntries LedgerEntry[]
+
+  @@index([customerId, status])
+  @@map("gift_reservations")
+}
+
+model Campaign {
+  id               String   @id @default(cuid())
+  kind             String // AMOUNT_TIER | SECOND_PURCHASE_7D | REFERRAL_FIRST_PURCHASE | WINBACK_21D | BIRTHDAY_WINDOW | OFF_PEAK_MULTIPLIER
+  nameUz           String
+  bonusPercent     Int?
+  multiplierNum    Int?
+  multiplierDen    Int?
+  minAmountSom     Int?
+  active           Boolean  @default(false) // spetsifikatsiya bo'yicha boshlang'ich holat NOFAOL
+  startsAt         DateTime? @db.Timestamptz(3) 
+  endsAt           DateTime? @db.Timestamptz(3) 
+  audienceNote     String?
+  budgetSom        Int?
+  usageLimitTotal  Int?
+  usageLimitPerCustomer Int?
+  config           Json @default("{}")
+  createdAt        DateTime @default(now()) @db.Timestamptz(3) 
+  updatedAt        DateTime @updatedAt @db.Timestamptz(3) 
+
+  @@map("campaigns")
+}
+
+model Broadcast {
+  id            String    @id @default(cuid())
+  titleInternal String
+  bodyUz        String
+  bodyRu        String?
+  imageUrl      String?
+  buttonLabel   String?
+  buttonUrl     String?
+  onlyConsented Boolean   @default(true)
+  scheduledAt   DateTime? @db.Timestamptz(3) 
+  sentAt        DateTime? @db.Timestamptz(3) 
+  cancelledAt   DateTime? @db.Timestamptz(3) 
+  createdAt     DateTime  @default(now()) @db.Timestamptz(3) 
+  status        String @default("DRAFT")
+  audienceBranchId String?
+
+  recipientLogs BroadcastRecipientLog[]
+
+  @@map("broadcasts")
+}
+
+model BroadcastRecipientLog {
+  id           String    @id @default(cuid())
+  broadcastId  String
+  customerId   String
+  sentAt       DateTime? @db.Timestamptz(3) 
+  deliveryError String?
+  buttonClickedAt DateTime? @db.Timestamptz(3) 
+  status       String @default("PENDING")
+  attemptedAt  DateTime? @db.Timestamptz(3) 
+
+  broadcast Broadcast @relation(fields: [broadcastId], references: [id])
+  customer  Customer  @relation(fields: [customerId], references: [id])
+
+  @@unique([broadcastId, customerId])
+  @@map("broadcast_recipient_logs")
+}
+
+model Feedback {
+  id         String   @id @default(cuid())
+  customerId String
+  message    String
+  createdAt  DateTime @default(now()) @db.Timestamptz(3) 
+
+  customer Customer @relation(fields: [customerId], references: [id])
+
+  @@map("feedback")
+}
+
+/// Tashqi POS (ZimZim) integratsiyasi konfiguratsiyasi holati.
+/// Hozircha har doim NOT_CONFIGURED - haqiqiy API hujjati va ruxsat
+/// berilmaguncha CONFIGURED_LIVE ga o'tkazilmasin.
+model PosAdapterConfig {
+  id          String               @id @default(cuid())
+  providerName String              @default("zimzim")
+  status      PosAdapterStatusEnum @default(NOT_CONFIGURED)
+  notes       String?
+  updatedAt   DateTime             @updatedAt @db.Timestamptz(3) 
+
+  @@map("pos_adapter_config")
+}
+
+model AuditLog {
+  id            String   @id @default(cuid())
+  staffUserId   String?
+  action        String
+  entityType    String
+  entityId      String
+  beforeJson    Json?
+  afterJson     Json?
+  createdAt     DateTime @default(now()) @db.Timestamptz(3) 
+
+  staffUser StaffUser? @relation(fields: [staffUserId], references: [id])
+
+  @@index([entityType, entityId])
+  @@map("audit_logs")
+}
+
+model AppSetting {
+  key       String   @id
+  value     Json
+  updatedAt DateTime @updatedAt @db.Timestamptz(3) 
+
+  @@map("app_settings")
+}
+
+/// Telegram update / callback / operatsiya idempotensiyasi uchun.
+model IdempotencyKey {
+  key       String   @id
+  requestHash String?
+  response Json?
+  createdAt DateTime @default(now()) @db.Timestamptz(3) 
+
+  @@map("idempotency_keys")
+}
+
+model CampaignUsage {
+  id String @id @default(cuid())
+  campaignId String
+  customerId String
+  receiptId String
+  units Int
+  costSom Int
+  referrerCustomerId String?
+  reversed Boolean @default(false)
+  createdAt DateTime @default(now()) @db.Timestamptz(3) 
+  @@unique([campaignId, receiptId])
+  @@index([campaignId, customerId])
+  @@map("campaign_usage")
+}
+
+model PointLot {
+  id String @id @default(cuid())
+  customerId String
+  receiptId String?
+  ledgerId String @unique
+  remaining Int
+  expiresAt DateTime? @db.Timestamptz(3) 
+  remindedAt DateTime? @db.Timestamptz(3) 
+  createdAt DateTime @default(now()) @db.Timestamptz(3) 
+  @@index([customerId, expiresAt])
+  @@map("point_lots")
+}
+
+model Outbox {
+  id String @id @default(cuid())
+  key String @unique
+  customerId String?
+  telegramId String
+  text String
+  imageUrl String?
+  buttonLabel String?
+  buttonUrl String?
+  broadcastId String?
+  status String @default("PENDING")
+  attempts Int @default(0)
+  availableAt DateTime @default(now()) @db.Timestamptz(3) 
+  lockedAt DateTime? @db.Timestamptz(3) 
+  lastError String?
+  sentAt DateTime? @db.Timestamptz(3) 
+  createdAt DateTime @default(now()) @db.Timestamptz(3) 
+  @@index([status, availableAt])
+  @@map("outbox")
+}
+
+model TelegramUpdate {
+  id Int @id
+  payload Json
+  status String @default("PENDING")
+  attempts Int @default(0)
+  leaseToken String?
+  lockedAt DateTime? @db.Timestamptz(3)
+  availableAt DateTime @default(now()) @db.Timestamptz(3)
+  createdAt DateTime @default(now()) @db.Timestamptz(3) 
+  @@index([status, availableAt])
+  @@map("telegram_updates")
+}
+
+model BotSession {
+  key String @id
+  value Json
+  updatedAt DateTime @updatedAt @db.Timestamptz(3) 
+  @@map("bot_sessions")
+}

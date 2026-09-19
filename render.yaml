@@ -1,0 +1,42 @@
+# Only free resources. Supabase supplies the persistent database and receipt bucket.
+services:
+  - type: web
+    name: beshball
+    runtime: docker
+    plan: free
+    region: frankfurt
+    dockerfilePath: ./Dockerfile.cloud
+    healthCheckPath: /ready
+    autoDeployTrigger: off
+    envVars:
+      - key: DATABASE_URL
+        sync: false
+      - key: REDIS_URL
+        fromService:
+          type: keyvalue
+          name: beshball-queue
+          property: connectionString
+      - key: TELEGRAM_BOT_TOKEN
+        sync: false
+      - key: TELEGRAM_SEND_ENABLED
+        value: "false"
+      - key: BOT_API_SECRET
+        sync: false
+      - key: TELEGRAM_WEBHOOK_SECRET
+        generateValue: true
+      - key: SUPER_ADMIN_TELEGRAM_IDS
+        value: "5916247309"
+      - key: STORAGE_PROVIDER
+        value: supabase
+      - key: SUPABASE_STORAGE_URL
+        sync: false
+      - key: SUPABASE_SERVICE_KEY
+        sync: false
+      - key: S3_BUCKET
+        value: beshball-receipts
+  - type: keyvalue
+    name: beshball-queue
+    plan: free
+    region: frankfurt
+    maxmemoryPolicy: noeviction
+    ipAllowList: []

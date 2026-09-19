@@ -1,0 +1,12 @@
+# Replace these domains. Admin/API share one origin.
+beshball.example.com {
+ reverse_proxy admin:80
+}
+api.beshball.example.com {
+ @webhook path /telegram/webhook
+ reverse_proxy @webhook backend:3000
+ respond 404
+}
+storage.beshball.example.com {
+ reverse_proxy minio:9000
+}

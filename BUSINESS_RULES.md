@@ -1,0 +1,17 @@
+﻿# BeshBall biznes qoidalari
+
+- 1 BeshBall = 100 000 butun birlik. 1 so‘m tegishli xarid = 1 birlik. 32 000 + 36 000 + 42 000 = 1 ball va 10% progress.
+- 735 000 birlikdan 7 ball sarflansa, 35 000 birlik qoladi. 265 000 birlikdan 7 ballik sovg‘agacha 435 000 so‘mlik oddiy xarid kerak.
+- +15% bonus — 15 000 birlik. ×1,5 aksiya xarid birliklariga qo‘llanadi; kasr birlik pastga yaxlitlanadi.
+- Bitta chekda bazaviy birliklar va eng foydali BITTA mos aksiya. Multiplikator va foiz-bonus ustma-ust qo‘shilmaydi. Teng bonuslarda campaign ID alifbo tartibi hal qiladi. Barcha boshlang‘ich aksiyalar nofaol.
+- Chegirmali setlar faqat bazaviy birlik beradi. Bonusga moslikni xodim alohida tekshiradi. Budjet xarajati `bonusCostSomPerBall` asosidagi rejalashtirish taxmini; haqiqiy tannarx emas.
+- Referalning ikkala oluvchisiga berilgan birliklar bitta aksiya budjetiga kiradi. O‘zini taklif qilish mumkin emas. Mavjud mijoz qayta ro‘yxatdan o‘tib referal ololmaydi. Mukofot chegarasi Toshkent vaqti bo‘yicha tasdiqlash kalendar oyida 5 ta. Bekor qilingan foydalanishlar limitga kirmaydi.
+- Kampaniyalar tasdiqlash paytida ma’lum bo‘lgan tasdiqlangan cheklar tarixi bilan tanlanadi. Kechikib tekshirilgan oldingi chek avvalgi kampaniya natijalarini avtomatik qayta hisoblamaydi. Tug‘ilgan kun oynasi ±3 kun. Seed bir martalik kampaniyalarga bir mijoz uchun 1 foydalanish limitini qo‘yadi; admin biznes qaroriga ko‘ra tahrirlaydi.
+- Filiallar bo‘yicha sovg‘a narxi umumiy, mavjudlik alohida. Kunlik sovg‘a limiti barcha filiallar bo‘yicha umumiy; Toshkent yarim tunida yangilanadi. Faol rezervlar ham limitni band qiladi. Narx, menyu qiymati va tannarx rezerv yaratilganda saqlanadi.
+- Bitta faol rezerv, standart 180 soniya. Yangi rezerv eskisini bekor qiladi. Skanerlash ball yechmaydi. Kassir alohida tasdiqlaydi. Rezerv muddati tugaganda balans hisobida darhol bo‘shaydi, worker statusni ham yangilaydi.
+- Chekning 120 daqiqasi server birinchi qabul qilgan vaqtga nisbatan. Aniq 120 daqiqa mos; kelajak yoki noto‘g‘ri vaqt mos emas. Adminning kech tekshiruvi muddatni o‘zgartirmaydi.
+- Global rasm hash va filial+kassa+externalSaleId unique. O‘xshash rasm faqat tekshiruv belgisi. Muddat va dublikat nazorati boshqa odamning hali ishlatilmagan chekini to‘liq to‘xtatmaydi.
+- Qaytarish bazaviy va referal/aksiya bonuslarini teskari ledger yozuvi bilan bekor qiladi. Sarflangan birliklar aniqlansa riskHold yoqiladi, faol rezervlar bekor bo‘ladi. Bosh admin sababli hisob tuzatishi bilan tekshiruvni yakunlaydi.
+- Reklama faqat rozilik bilan, barcha aksiyalar bo‘yicha so‘nggi 7 kunda ko‘pi bilan 2 urinish; muvaffaqiyatsiz urinish ham konservativ limitga kiradi. Standart sokin vaqt 21:00–09:00 Toshkent. Obunadan chiqish har reklamada bor. Telegram 403 oluvchiga keyingi jo‘natmalarni to‘xtatadi; yangi foydalanuvchi murojaati xizmat xabarlarini qayta ruxsatlaydi, reklamaga rozilik avtomatik qaytmaydi.
+- Ball muddati standart o‘chiq (pointExpiryDays=0). Yoqilganda yangi kreditlar lotlarga muddat oladi. Eski muddatsiz lotlar o‘zgarmaydi. Worker muddati yaqin lot haqida eslatadi; faol rezerv borida o‘chirish kechiktiriladi. O‘chirilsa muddat bo‘yicha jarayonlar pauza qiladi.
+- Ballni pulga yechish yoki boshqaga o‘tkazish yo‘q. Hisobot faqat bot orqali tasdiqlangan cheklar summasini ko‘rsatadi. Menyu qiymati tannarx emas; yo‘q tannarx alohida belgilanadi. Aksiya bilan bog‘langan xarid qo‘shimcha savdo isboti emas.

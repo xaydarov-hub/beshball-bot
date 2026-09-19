@@ -1,0 +1,1 @@
+ALTER TABLE "gift_branches" ADD COLUMN "active" BOOLEAN NOT NULL DEFAULT true;
