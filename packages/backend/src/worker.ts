@@ -21,9 +21,11 @@ const queue = new Queue("beshball", { connection });
 const transactionalOnly =
   process.env.TRANSACTIONAL_NOTIFICATIONS_ONLY === "true";
 let lastHousekeeping = 0;
+// 8s balances OCR pickup latency against the free-tier's 3-connection DB pool:
+// every tick spends one of those connections on a receipt scan even when idle.
 await queue.upsertJobScheduler(
   "maintenance",
-  { every: 3000 },
+  { every: 8000 },
   { name: "tick", data: {} },
 );
 const worker = new Worker(
