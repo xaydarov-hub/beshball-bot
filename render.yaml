@@ -4,7 +4,7 @@ services:
     name: beshball
     runtime: docker
     plan: free
-    region: frankfurt
+    region: singapore
     dockerfilePath: ./Dockerfile.cloud
     healthCheckPath: /ready
     autoDeployTrigger: off
@@ -37,6 +37,6 @@ services:
   - type: keyvalue
     name: beshball-queue
     plan: free
-    region: frankfurt
+    region: singapore
     maxmemoryPolicy: noeviction
     ipAllowList: []
